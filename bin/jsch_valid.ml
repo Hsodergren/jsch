@@ -1,4 +1,5 @@
 open Cmdliner
+open Jsch
 
 let read_file f =
   let ch = open_in f in
@@ -7,7 +8,7 @@ let read_file f =
   s
 
 let format_error (path,str) =
-  let path = Json.Jsonpath.to_string path in
+  let path = Jsonpath.to_string path in
   Printf.sprintf "%s : %s" path str
 
 let rec intersperse ~sep = function
@@ -19,8 +20,8 @@ let ( let* ) = Result.bind
 let validate file schema =
   let aux =
     let json = Yojson.Safe.from_file file in
-    let* schema = Json.Schema.of_string (read_file schema) in
-    match Json.Schema.validate json schema with
+    let* schema = Schema.of_string (read_file schema) in
+    match Schema.validate json schema with
     | `Valid -> Ok ()
     | `Invalid errs ->
       let errs = List.map format_error errs in
@@ -36,7 +37,7 @@ let schema =
 
 let file =
   let doc = "The json file to validate" in
-  Arg.(required & opt (some file) None & info ["f"; "file"] ~docv:"JSON FILE" ~doc)
+  Arg.(required & opt (some file) None & info ["f"; "file"] ~docv:"JSON_FILE" ~doc)
 
 let cmd =
   let doc = "JSON Schema validator" in

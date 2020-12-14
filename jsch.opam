@@ -10,6 +10,7 @@ bug-reports: "https://github.com/Hsodergren/jsch/issues"
 depends: [
   "yojson"
   "cmdliner"
+  "re"
 ]
 build: [
   ["dune" "build"]
