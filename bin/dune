@@ -1,4 +1,3 @@
 (executable
- (public_name json)
- (name main)
+ (name jsch_valid)
  (libraries json cmdliner))
