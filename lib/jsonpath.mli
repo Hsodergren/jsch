@@ -1,0 +1,12 @@
+type t
+
+type fragment = [ `Object of string
+                | `Index of int ]
+
+val empty: t
+
+val add: t -> fragment -> t
+
+val to_string: t -> string
+
+val to_list: t -> fragment list

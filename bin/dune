@@ -1,0 +1,4 @@
+(executable
+ (public_name json)
+ (name main)
+ (libraries json cmdliner))
