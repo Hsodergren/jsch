@@ -1,0 +1,17 @@
+opam-version: "2.0"
+name: "jsch"
+version: "0.1"
+synopsis: "A JSON schema library for ocaml"
+maintainer: "henrik Södergren <henrik@localhost.localdomain>"
+authors: "henrik <henrik@localhost.localdomain>"
+license: "MIT"
+homepage: "https://github.com/Hsodergren/jsch"
+bug-reports: "https://github.com/Hsodergren/jsch/issues"
+depends: [
+  "yojson"
+  "cmdliner"
+]
+build: [
+  ["dune" "build"]
+]
+dev-repo: "git+https://github.com/Hsodergren/jsch"
