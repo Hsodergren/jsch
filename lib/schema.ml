@@ -23,7 +23,7 @@ and arrayv = { items: t
 and objectv = { properties: properties
               ; required: string list option }
 and properties = | Props of (string * t) list
-                 | PatProps of (Str.regexp * string * t) list
+                 | PatProps of (Re.re * string * t) list
 
 let json_opt v =
   match v with
@@ -66,6 +66,7 @@ let to_list_option msg = function
   | `List l -> Ok (Some l)
   | _ -> Error (msg ^ " doesn't contain a list")
 
+let compile_rexexp s = Re.Posix.(compile (re s))
 let of_string str =
   let open Yojson.Safe in
   let (let*) = Result.bind in
@@ -112,7 +113,7 @@ let of_string str =
       Ok (Props l)
     in
     let to_pat_prop assoc =
-      list_result_map ~f:(fun (s, j) -> parse j >>| fun j -> Str.regexp s,s,j) assoc >>= fun l ->
+      list_result_map ~f:(fun (s, j) -> parse j >>| fun j ->  compile_rexexp s,s,j) assoc >>= fun l ->
       Ok (PatProps l)
     in
     let* propf, propjson =
@@ -176,7 +177,7 @@ let find_first_matching str obj_strs =
   | Props l -> find_it (String.equal str) l
   | PatProps l ->
     List.map (fun (a,_,b) -> a,b) l
-    |> find_it (fun p -> Str.string_match p str 0)
+    |> find_it (fun p -> Re.execp p str)
 
 let validate json t =
   let open VR.Infix in
