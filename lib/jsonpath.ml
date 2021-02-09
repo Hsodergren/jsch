@@ -1,7 +1,7 @@
 type fragment = [ `Object of string
-                | `Index of int ]
+                | `Index of int ] [@@deriving eq]
 
-type t = fragment list
+type t = fragment list [@@deriving eq]
 
 let empty = []
 

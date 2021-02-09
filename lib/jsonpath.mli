@@ -1,4 +1,4 @@
-type t
+type t [@@deriving eq]
 
 type fragment = [ `Object of string
                 | `Index of int ]
