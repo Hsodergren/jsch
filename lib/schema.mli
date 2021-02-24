@@ -24,6 +24,7 @@ and properties = | Props of (string * t) list
 val of_string: string -> (t,string) result
 
 (*  *)
+val kind: value -> string
 type validate_result = [ `Valid
                        | `Invalid of (Jsonpath.t * string) list]
 

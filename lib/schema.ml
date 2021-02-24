@@ -25,6 +25,14 @@ and objectv = { properties: properties
 and properties = | Props of (string * t) list
                  | PatProps of (Re.re * string * t) list
 
+let kind = function
+  | Number _ -> "number"
+  | Integer _ -> "integer"
+  | String _ -> "string"
+  | Boolean -> "bool"
+  | Array _ -> "array"
+  | Object _ -> "object"
+
 let json_opt v =
   match v with
   | `Null -> None
