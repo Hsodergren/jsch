@@ -75,12 +75,13 @@ let to_list_option msg = function
   | _ -> Error (msg ^ " doesn't contain a list")
 
 let compile_rexexp s = Re.Posix.(compile (re s))
-let of_string str =
+
+
+let of_yojson full_json =
   let open Yojson.Safe in
   let (let*) = Result.bind in
   let (>>=) = Result.bind in
   let (>>|) m f = Result.map f m in
-  let full_json = from_string str in
   let rec follow_ref json =
     match Util.member "$ref" json with
     | `String s -> follow_ref @@ get_path (parse_path s) full_json
@@ -146,6 +147,9 @@ let of_string str =
     Ok (Array {items; arr_min_length; arr_max_length})
   in
   parse full_json
+
+let of_string str =
+  of_yojson @@ Yojson.Safe.from_string str
 
 module Validate_Result = struct
   type t = | Valid

@@ -22,6 +22,7 @@ and properties = | Props of (string * t) list
 
 (* Creates an instance of t *)
 val of_string: string -> (t,string) result
+val of_yojson: Yojson.Safe.t -> (t,string) result
 
 (*  *)
 val kind: value -> string
