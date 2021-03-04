@@ -16,12 +16,12 @@ let assoc_pop k l2 =
   in
   aux k l2 []
 
-let rec merge_assoc ~strat l1 l2 =
+let rec merge_assoc ~a_strat ~o_strat l1 l2 =
   match l1 with
   | ((k,v1) as hd) ::tl -> begin
       match assoc_pop k l2 with
-      | Some (v2,rest) -> (k,merge v1 v2)::merge_assoc ~strat tl rest
-      | None -> hd::merge_assoc ~strat tl l2
+      | Some (v2,rest) -> (k,merge ~a_strat ~o_strat v1 v2)::merge_assoc ~o_strat ~a_strat tl rest
+      | None -> hd::merge_assoc ~o_strat ~a_strat tl l2
     end
   | [] -> l2
 
@@ -31,7 +31,7 @@ and merge
     (base: Yojson.Safe.t)
     (ext: Yojson.Safe.t) =
   match base, ext with
-  | `Assoc base_l, `Assoc ext_l -> `Assoc (merge_assoc ~strat:o_strat base_l ext_l)
+  | `Assoc base_l, `Assoc ext_l -> `Assoc (merge_assoc ~a_strat ~o_strat base_l ext_l)
   | `List l1 , `List l2 ->  begin
     match a_strat with
     | `Replace -> `List l2
