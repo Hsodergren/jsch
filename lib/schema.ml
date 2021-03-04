@@ -74,8 +74,7 @@ let to_list_option msg = function
   | `List l -> Ok (Some l)
   | _ -> Error (msg ^ " doesn't contain a list")
 
-let compile_rexexp s = Re.Posix.(compile (re s))
-
+let compile_rexexp s = Re.Posix.(compile (Re.seq [Re.bos; re s; Re.eos]))
 
 let of_yojson full_json =
   let open Yojson.Safe in
