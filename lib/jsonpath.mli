@@ -5,6 +5,8 @@ type fragment = [ `Object of string
 
 val empty: t
 
+val compare: t -> t -> int
+
 val add: t -> fragment -> t
 
 val to_string: t -> string
