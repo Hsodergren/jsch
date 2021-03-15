@@ -21,8 +21,8 @@ and properties = | Props of (string * t) list
                  | PatProps of (Re.re * string * t) list
 
 (* Creates an instance of t *)
-val of_string: string -> (t,string) result
-val of_yojson: Yojson.Safe.t -> (t,string) result
+val of_string: ?assume_object:bool -> string -> (t,string) result
+val of_yojson: ?assume_object:bool -> Yojson.Safe.t -> (t,string) result
 
 (*  *)
 val kind: value -> string

@@ -76,7 +76,7 @@ let to_list_option msg = function
 
 let compile_rexexp s = Re.Posix.(compile (Re.seq [Re.bos; re s; Re.eos]))
 
-let of_yojson full_json =
+let of_yojson ?(assume_object=false) full_json =
   let open Yojson.Safe in
   let (let*) = Result.bind in
   let (>>=) = Result.bind in
@@ -110,7 +110,10 @@ let of_yojson full_json =
       | `String "object" -> parse_object json
       | `String "array" -> parse_array json
       | `String s -> Error ("invalid type: " ^ s)
-      | `Null -> Error "A type definition must have a 'type' field"
+      | `Null ->
+        if assume_object
+        then parse_object json
+        else Error "A type definition must have a 'type' field"
       | _ -> Error "'type' field must be string"
     in
     Ok ({description; title; enum; value})
@@ -147,8 +150,8 @@ let of_yojson full_json =
   in
   parse full_json
 
-let of_string str =
-  of_yojson @@ Yojson.Safe.from_string str
+let of_string ?(assume_object=false) str =
+  of_yojson ~assume_object @@ Yojson.Safe.from_string str
 
 module Validate_Result = struct
   type t = | Valid
