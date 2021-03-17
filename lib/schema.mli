@@ -30,4 +30,4 @@ type validate_result = [ `Valid
                        | `Invalid of (Jsonpath.t * string) list]
 
 (* [validate json schema] validate the a [json] document against the [schema] *)
-val validate: Yojson.Safe.t -> t -> validate_result
+val validate: Yojson.Safe.t -> t -> [> validate_result]
