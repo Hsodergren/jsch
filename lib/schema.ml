@@ -25,6 +25,9 @@ and objectv = { properties: properties
 and properties = | Props of (string * t) list
                  | PatProps of (Re.re * string * t) list
 
+let (let+) o f = Result.map f o
+let (let*) = Result.bind
+
 let kind = function
   | Number _ -> "number"
   | Integer _ -> "integer"
@@ -55,19 +58,18 @@ let parse_path str =
   |> String.split_on_char '/'
 
 let rec list_result_map ~f l =
-  let (>>=) = Result.bind in
   match l with
   | [] -> Ok []
   | hd::tl ->
-    f hd >>= fun hd ->
-    list_result_map ~f tl >>= fun tl ->
-    Ok (hd::tl)
+    let* hd = f hd in
+    let+ tl = list_result_map ~f tl in
+    hd::tl
 
 let to_type_option_r f j =
   Yojson.Safe.Util.(try Ok (f j) with Type_error (s,_) -> Error s)
-let to_int_option_r j = to_type_option_r Yojson.Safe.Util.to_int_option j
-let to_number_option_r j = to_type_option_r Yojson.Safe.Util.to_number_option j
-let to_string_option_r j = to_type_option_r Yojson.Safe.Util.to_string_option j
+let to_int j = to_type_option_r Yojson.Safe.Util.to_int_option j
+let to_number j = to_type_option_r Yojson.Safe.Util.to_number_option j
+let to_string j = to_type_option_r Yojson.Safe.Util.to_string_option j
 
 let to_list_option msg = function
   | `Null -> Ok None
@@ -77,10 +79,7 @@ let to_list_option msg = function
 let compile_rexexp s = Re.Posix.(compile (Re.seq [Re.bos; re s; Re.eos]))
 
 let of_yojson ?(assume_object=false) full_json =
-  let open Yojson.Safe in
-  let (let*) = Result.bind in
-  let (>>=) = Result.bind in
-  let (>>|) m f = Result.map f m in
+  let module Util = Yojson.Safe.Util in
   let rec follow_ref json =
     match Util.member "$ref" json with
     | `String s -> follow_ref @@ get_path (parse_path s) full_json
@@ -88,23 +87,23 @@ let of_yojson ?(assume_object=false) full_json =
     | _ -> Error "$ref field must be a string field"
   in
   let parse_string json =
-    let* str_max_length = Util.member "maxLength" json |> to_int_option_r in
-    let* str_min_length = Util.member "minLength" json |> to_int_option_r in
-    Ok (String {str_max_length;str_min_length})
+    let* str_max_length = Util.member "maxLength" json |> to_int in
+    let+ str_min_length = Util.member "minLength" json |> to_int in
+    String {str_max_length;str_min_length}
   in
   let parse_number json =
-    let* min = Util.member "minimum" json |> to_number_option_r in
-    let* max = Util.member "maximum" json |> to_number_option_r in
-    Ok ({min;max})
+    let* min = Util.member "minimum" json |> to_number in
+    let+ max = Util.member "maximum" json |> to_number in
+    {min;max}
   in
   let rec parse json =
     let* json = follow_ref json in
-    let* description = Util.member "description" json |> to_string_option_r in
-    let* title = Util.member "title" json |> to_string_option_r in
+    let* description = Util.member "description" json |> to_string in
+    let* title = Util.member "title" json |> to_string in
     let* enum = Util.member "enum" json |> to_list_option "enum" in
-    let* value = match Util.member "type" json with
-      | `String "integer" -> parse_number json >>| fun num -> Integer num
-      | `String "number" -> parse_number json >>| fun num -> Number num
+    let+ value = match Util.member "type" json with
+      | `String "integer" -> let+ num = parse_number json in Integer num
+      | `String "number" -> let+ num = parse_number json in Number num
       | `String "string" -> parse_string json
       | `String "boolean" -> Ok Boolean
       | `String "object" -> parse_object json
@@ -116,16 +115,16 @@ let of_yojson ?(assume_object=false) full_json =
         else Error "A type definition must have a 'type' field"
       | _ -> Error "'type' field must be string"
     in
-    Ok ({description; title; enum; value})
+    {description; title; enum; value}
   and parse_object json =
     let mem str = Util.member str json in
     let to_prop assoc =
-      list_result_map ~f:(fun (s, j) -> parse j >>| fun j -> s,j) assoc >>= fun l ->
-      Ok (Props l)
+      let+ l = list_result_map ~f:(fun (s, j) -> let+ j = parse j in s,j) assoc in
+      Props l
     in
     let to_pat_prop assoc =
-      list_result_map ~f:(fun (s, j) -> parse j >>| fun j ->  compile_rexexp s,s,j) assoc >>= fun l ->
-      Ok (PatProps l)
+      let+ l = list_result_map ~f:(fun (s, j) -> let+ j = parse j in compile_rexexp s,s,j) assoc in
+      PatProps l
     in
     let* propf, propjson =
       match mem "properties",  mem "patternProperties" with
@@ -133,7 +132,7 @@ let of_yojson ?(assume_object=false) full_json =
      | `Null, json -> Ok (to_pat_prop, json)
      | json, _ -> Ok (to_prop, json)
     in
-    let* properties = propjson
+    let+ properties = propjson
                       |> Util.to_assoc
                       |> propf
     in
@@ -141,12 +140,12 @@ let of_yojson ?(assume_object=false) full_json =
       let r = Util.member "required" json in
       Option.map (fun j -> j |> Util.to_list |> Util.filter_string) (json_opt r)
     in
-    Ok (Object {properties; required})
+    Object {properties; required}
   and parse_array json =
     let* items = Util.member "items" json |> parse in
-    let* arr_max_length = Util.member "maxItems" json |> to_int_option_r in
-    let* arr_min_length = Util.member "minItems" json |> to_int_option_r in
-    Ok (Array {items; arr_min_length; arr_max_length})
+    let* arr_max_length = Util.member "maxItems" json |> to_int in
+    let+ arr_min_length = Util.member "minItems" json |> to_int in
+    Array {items; arr_min_length; arr_max_length}
   in
   parse full_json
 
