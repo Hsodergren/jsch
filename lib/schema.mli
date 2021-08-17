@@ -1,7 +1,10 @@
-type t = { description: string option
-         ; title: string option
-         ; enum: Yojson.Safe.t list option
-         ; value: value }
+type t =
+  | Ref of (t,string) result Lazy.t
+  | T of schema
+and schema = { description: string option
+             ; title: string option
+             ; enum: Yojson.Safe.t list option
+             ; value: value }
 and value = | Number of numberv
             | Integer of numberv
             | String of stringv
@@ -24,8 +27,11 @@ and properties = | Props of (string * t) list
 val of_string: ?assume_object:bool -> string -> (t,string) result
 val of_yojson: ?assume_object:bool -> Yojson.Safe.t -> (t,string) result
 
-(*  *)
+val schema: t -> (schema, string) result
+val schema_exn: t -> schema
+
 val kind: value -> string
+
 type validate_result = [ `Valid
                        | `Invalid of (Jsonpath.t * string) list]
 

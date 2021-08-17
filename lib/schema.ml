@@ -3,10 +3,13 @@ open Printf
 type validate_result = [ `Valid
                        | `Invalid of (Jsonpath.t * string) list]
 
-type t = { description: string option
-         ; title: string option
-         ; enum: Yojson.Safe.t list option
-         ; value: value }
+type t =
+  | Ref of (t,string) result Lazy.t
+  | T of schema
+and schema = { description: string option
+             ; title: string option
+             ; enum: Yojson.Safe.t list option
+             ; value: value }
 and value = | Number of numberv
             | Integer of numberv
             | String of stringv
@@ -25,7 +28,16 @@ and objectv = { properties: properties
 and properties = | Props of (string * t) list
                  | PatProps of (Re.re * string * t) list
 
-let kind = function
+let rec schema = function
+  | T s -> Ok s
+  | Ref t -> Result.bind (Lazy.force t) schema
+
+let rec schema_exn t =
+  match schema t with
+  | Ok t -> t
+  | Error str -> failwith str
+
+let rec kind = function
   | Number _ -> "number"
   | Integer _ -> "integer"
   | String _ -> "string"
@@ -83,8 +95,8 @@ let of_yojson ?(assume_object=false) full_json =
   let (>>|) m f = Result.map f m in
   let rec follow_ref json =
     match Util.member "$ref" json with
-    | `String s -> follow_ref @@ get_path (parse_path s) full_json
-    | `Null -> Ok json
+    | `String s -> Ok (`Ref (parse_path s))(* follow_ref @@ get_path (parse_path s) full_json *)
+    | `Null -> Ok (`Json json)
     | _ -> Error "$ref field must be a string field"
   in
   let parse_string json =
@@ -98,25 +110,28 @@ let of_yojson ?(assume_object=false) full_json =
     Ok ({min;max})
   in
   let rec parse json =
-    let* json = follow_ref json in
-    let* description = Util.member "description" json |> to_string_option_r in
-    let* title = Util.member "title" json |> to_string_option_r in
-    let* enum = Util.member "enum" json |> to_list_option "enum" in
-    let* value = match Util.member "type" json with
-      | `String "integer" -> parse_number json >>| fun num -> Integer num
-      | `String "number" -> parse_number json >>| fun num -> Number num
-      | `String "string" -> parse_string json
-      | `String "boolean" -> Ok Boolean
-      | `String "object" -> parse_object json
-      | `String "array" -> parse_array json
-      | `String s -> Error ("invalid type: " ^ s)
-      | `Null ->
-        if assume_object
-        then parse_object json
-        else Error "A type definition must have a 'type' field"
-      | _ -> Error "'type' field must be string"
-    in
-    Ok ({description; title; enum; value})
+    match follow_ref json with
+    | Error _ as err -> err
+    | Ok (`Ref path) -> Ok (Ref (lazy (parse (get_path path full_json))))
+    | Ok (`Json json) ->
+      let* description = Util.member "description" json |> to_string_option_r in
+      let* title = Util.member "title" json |> to_string_option_r in
+      let* enum = Util.member "enum" json |> to_list_option "enum" in
+      let* value = match Util.member "type" json with
+        | `String "integer" -> parse_number json >>| fun num -> Integer num
+        | `String "number" -> parse_number json >>| fun num -> Number num
+        | `String "string" -> parse_string json
+        | `String "boolean" -> Ok Boolean
+        | `String "object" -> parse_object json
+        | `String "array" -> parse_array json
+        | `String s -> Error ("invalid type: " ^ s)
+        | `Null ->
+          if assume_object
+          then parse_object json
+          else Error "A type definition must have a 'type' field"
+        | _ -> Error "'type' field must be string"
+      in
+      Ok (T {description; title; enum; value})
   and parse_object json =
     let mem str = Util.member str json in
     let to_prop assoc =
@@ -128,10 +143,10 @@ let of_yojson ?(assume_object=false) full_json =
       Ok (PatProps l)
     in
     let* propf, propjson =
-      match mem "properties",  mem "patternProperties" with
-     | `Null, `Null -> Error "need properties or patterProperties"
-     | `Null, json -> Ok (to_pat_prop, json)
-     | json, _ -> Ok (to_prop, json)
+      match mem "properties", mem "patternProperties" with
+      | `Null, `Null -> Error "need properties or patterProperties"
+      | `Null, json -> Ok (to_pat_prop, json)
+      | json, _ -> Ok (to_prop, json)
     in
     let* properties = propjson
                       |> Util.to_assoc
@@ -184,14 +199,14 @@ let rec mem ~cmp v l =
 
 
 let find_first_matching str obj_strs =
-  let find_it pred l =
+  let find_assoc pred l =
     List.find_map (fun (s,j) -> if pred s then Some j else None) l
   in
   match obj_strs with
-  | Props l -> find_it (String.equal str) l
+  | Props l -> find_assoc (String.equal str) l
   | PatProps l ->
     List.map (fun (a,_,b) -> a,b) l
-    |> find_it (fun p -> Re.execp p str)
+    |> find_assoc (fun p -> Re.execp p str)
 
 let validate json t =
   let open VR.Infix in
@@ -221,32 +236,40 @@ let validate json t =
     let r2 = res_fold_opt max (fun max -> v <= max) path (sprintf "%f to big" v) in
     r1 <+> r2
   in
-  let rec validate_path path json {value;enum; _} =
-    let validate_enum () =
-      validate_opt enum @@ validate_enum path json
-    in
-    match json, value with
-    | `Assoc obj, Object {properties; required} ->
-      validate_object path obj properties
-      <+>
-      validate_opt required @@ validate_required path obj
-    | `List l, Array {items; arr_max_length; arr_min_length} ->
-      validate_list path l items
-      <+>
-      res_fold_opt arr_min_length (fun v -> List.length l >= v) path "List too short"
-      <+>
-      res_fold_opt arr_max_length (fun v -> List.length l <= v) path "List too long"
-    | `Int i , Integer numberv ->
-      validate_number path (float i) numberv <+> validate_enum ()
-    | (`Int _ | `Float _), Number numberv ->
-      let v = Yojson.Safe.Util.to_number json in
-      validate_number path v numberv <+> validate_enum ()
-    | `String s, String {str_max_length;str_min_length} ->
-      let min_len = res_fold_opt str_min_length (fun v -> String.length s >= v) path "string too short" in
-      let max_len = res_fold_opt str_max_length (fun v -> String.length s <= v) path "string too long" in
-      max_len <+> min_len <+> validate_enum ()
-    | `Bool _, Boolean -> VR.ok
-    | _ -> VR.error path "wrong object type"
+  let rec validate_path path json t =
+    match t with
+    | Ref t -> begin
+        match Lazy.force t with
+        | Ok t -> validate_path path json t
+        | Error str -> VR.error path ("reference parse error : " ^ str)
+      end
+    | T {value;enum;_} -> begin
+        let validate_enum () =
+          validate_opt enum @@ validate_enum path json
+        in
+        match json, value with
+        | `Assoc obj, Object {properties; required} ->
+          validate_object path obj properties
+          <+>
+          validate_opt required @@ validate_required path obj
+        | `List l, Array {items; arr_max_length; arr_min_length} ->
+          validate_list path l items
+          <+>
+          res_fold_opt arr_min_length (fun v -> List.length l >= v) path "List too short"
+          <+>
+          res_fold_opt arr_max_length (fun v -> List.length l <= v) path "List too long"
+        | `Int i , Integer numberv ->
+          validate_number path (float i) numberv <+> validate_enum ()
+        | (`Int _ | `Float _), Number numberv ->
+          let v = Yojson.Safe.Util.to_number json in
+          validate_number path v numberv <+> validate_enum ()
+        | `String s, String {str_max_length;str_min_length} ->
+          let min_len = res_fold_opt str_min_length (fun v -> String.length s >= v) path "string too short" in
+          let max_len = res_fold_opt str_max_length (fun v -> String.length s <= v) path "string too long" in
+          max_len <+> min_len <+> validate_enum ()
+        | `Bool _, Boolean -> VR.ok
+        | _ -> VR.error path "wrong object type"
+      end
   and validate_object path assoc props =
     List.map
       (fun (name, js) ->
